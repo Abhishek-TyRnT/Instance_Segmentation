@@ -122,10 +122,13 @@ def filter(boxes, img_size):
 
 def get_center(boxes):
     xmin, ymin, xmax, ymax = [boxes[:, i] for i in range(4)]
+    x_center = (xmin + xmax)//2
+    y_center =
 def get_truth_index(boxes, proposals):
 
     for box in boxes:
-        iou,area1,area2
+        iou,area1,area2 =
+
 
 
 
