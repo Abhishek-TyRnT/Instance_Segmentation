@@ -1,18 +1,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import json
 import os
-import cv2
 from pycocotools.coco import COCO
-import skimage.io as io
-import random
 import tensorflow as tf
-import matplotlib.gridspec as gridspec
 
 dataDir = 'F:\datasets\COCO 2017'
 dataType = 'val'
 
 def get_coco(dataDir, dataType):
+  dataDir = dataDir.decode('UTF-8')
+  dataType = dataType.decode('UTF-8')
   annFile = '{}/annotations/instances_{}2017.json'.format(dataDir, dataType)
 
   # initialize the COCO api for instance annotations
@@ -115,7 +112,6 @@ def filter(boxes, img_size):
 
     x_boxes           = np.clip(x_boxes, 0., img_size[1]-1)
     y_boxes           = np.clip(y_boxes, 0., img_size[0]-1)
-    print(x_boxes.max(),y_boxes.max())
     boxes             = np.stack([x_boxes[:,0],y_boxes[:,0],x_boxes[:,1],y_boxes[:,1]],axis = -1)
 
     return boxes
@@ -123,45 +119,63 @@ def filter(boxes, img_size):
 def get_center(boxes):
     xmin, ymin, xmax, ymax = [boxes[:, i] for i in range(4)]
     x_center = (xmin + xmax)//2
-    y_center =
+    y_center = (ymin + ymax)//2
+
+    return np.stack([x_center,y_center], axis = -1)
 def get_truth_index(boxes, proposals):
+    proposals_center = get_center(proposals)
+    box_centers      = get_center(boxes)
+    truth_index      = np.zeros(shape = (len(proposals)), dtype = np.bool)
+    instance_no      = np.zeros(shape=(len(proposals)), dtype=np.uint8)
+    i = 1
+    for box,center in zip(boxes,box_centers):
+        iou,area1,area2 = get_iou(box,proposals)
 
-    for box in boxes:
-        iou,area1,area2 =
+        index              = iou == area1/area2
 
+        diff               = center - proposals_center
+        error              = np.sqrt(np.sum(np.square(diff), axis = -1))
+        index              = np.logical_and(index,error <= 16.)
+        instance_no[index] = i
+        truth_index        = np.logical_or(truth_index,index)
+        i                  += 1
+    return truth_index,instance_no
 
+def get_ground_truth(coordinates,img_size,mask,img,output_size):
+    proposals = get_proposals(img_size)
+    proposals = rearrange(proposals)
+    proposals = transform(proposals)
+    proposals = filter(proposals, img_size)
+    truth_index,instance_nos = get_truth_index(coordinates, proposals)
+    patches,masked_patches,y   = get_ground_truth_mask(img,truth_index,proposals,mask,instance_nos,output_size)
+    return patches,masked_patches,y
 
+def get_ground_truth_mask(img,truth_index,proposals,mask,instance_nos,output_size):
+    boxes = proposals[truth_index]
+    instance_nos = instance_nos[truth_index]
+    patches,masked_patches = [],[]
+    one_hot = np.array([[1.,0.],[0.,1.]])
+    for i,box in zip(instance_nos,boxes):
+        box   = np.int32(box)
+        image = img[box[1]:box[3], box[0]:box[2]]
+        image = tf.image.resize(image,size=output_size)
+        patches.append(image)
 
+        instance     = np.where(mask == i,1,0)
+        instance     = one_hot[instance]
+        masked_patch = instance[box[1]:box[3], box[0]:box[2]]
+        masked_patch = tf.image.resize(masked_patch,size=output_size)
+        masked_patches.append(masked_patch)
+    remaining_boxes = len(masked_patches)
+    negative_boxes  = proposals[np.logical_not(truth_index)]
+    for i in range(remaining_boxes):
+        box = np.int32(negative_boxes[i])
 
+        image = img[box[1]:box[3], box[0]:box[2]]
+        image = tf.image.resize(image,size=output_size)
+        patches.append(image)
 
+        masked_patches.append(one_hot[np.zeros(shape = output_size,dtype = np.uint8)])
+    y  = np.concatenate([np.ones(shape = (remaining_boxes,)),np.zeros(shape = (remaining_boxes,))], axis = 0)
+    return np.array(patches),np.array(masked_patches),y
 
-
-
-coco = get_coco(dataDir, dataType)
-info = coco.dataset['images'][0]
-annIds = coco.getAnnIds(imgIds=info['id'])
-anns = coco.loadAnns(annIds)
-boxes = get_bb_box(info,coco)
-
-file_path = 'F:\datasets\COCO 2017\\val2017'
-img = plt.imread(os.path.join(file_path,info['file_name']))
-img_size = img.shape[:-1]
-proposals = get_proposals(img.shape[:-1])
-boxes                = rearrange(proposals)
-boxes                = transform(boxes)
-boxes                = filter(boxes,img_size)
-
-print(boxes.shape)
-xmin,ymin,xmax,ymax = [boxes[:,i] for i in range(4)]
-
-
-xmin,xmax            = xmin/info['width'] , xmax/info['width']
-ymin,ymax            = ymin/info['height'] , ymax/info['height']
-
-boxes                = np.stack([ymin,xmin,ymax,xmax],axis = -1)
-
-img                  = tf.image.draw_bounding_boxes([img/255.],[[boxes]],colors=[[1.0,0.,0.]])
-
-print(boxes.shape)
-plt.imshow(img[0])
-plt.show()
