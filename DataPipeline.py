@@ -52,6 +52,6 @@ def get_dataset(img_dir,Datadir,datatype,output_size,img_size, use_aug = True):
     ]
     dtypes = (tf.float32, tf.float32, tf.float32)
     shapes = (tf.TensorShape((output_size[0],output_size[1],3)),
-              tf.TensorShape((output_size[0],output_size[1],2)),
+              tf.TensorShape((output_size[0],output_size[1])),
               tf.TensorShape(()))
     return Dataset.from_generator(data_generator,output_types = dtypes, output_shapes= shapes, args = args)

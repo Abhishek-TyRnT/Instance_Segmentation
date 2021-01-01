@@ -154,15 +154,13 @@ def get_ground_truth_mask(img,truth_index,proposals,mask,instance_nos,output_siz
     boxes = proposals[truth_index]
     instance_nos = instance_nos[truth_index]
     patches,masked_patches = [],[]
-    one_hot = np.array([[1.,0.],[0.,1.]])
     for i,box in zip(instance_nos,boxes):
         box   = np.int32(box)
         image = img[box[1]:box[3], box[0]:box[2]]
         image = tf.image.resize(image,size=output_size)
         patches.append(image)
 
-        instance     = np.where(mask == i,1,0)
-        instance     = one_hot[instance]
+        instance     = np.where(mask == i,1,-1)
         masked_patch = instance[box[1]:box[3], box[0]:box[2]]
         masked_patch = tf.image.resize(masked_patch,size=output_size)
         masked_patches.append(masked_patch)
@@ -175,7 +173,7 @@ def get_ground_truth_mask(img,truth_index,proposals,mask,instance_nos,output_siz
         image = tf.image.resize(image,size=output_size)
         patches.append(image)
 
-        masked_patches.append(one_hot[np.zeros(shape = output_size,dtype = np.uint8)])
+        masked_patches.append(-np.ones(shape = output_size,dtype = np.int32))
     y  = np.concatenate([np.ones(shape = (remaining_boxes,)),np.zeros(shape = (remaining_boxes,))], axis = 0)
     return np.array(patches),np.array(masked_patches),y
 
