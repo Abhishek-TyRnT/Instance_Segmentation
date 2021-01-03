@@ -4,7 +4,7 @@ import sys
 def get_data_string(steps,current_step,loss):
    total_bar = 50
    increase_step = int(steps/total_bar + 0.5)
-   for i in range(1,83+1):
+   for i in range(0,current_step+1):
       if i%increase_step == 0:
         dashes = int(i/increase_step + 0.5)
         dots   = total_bar - dashes
@@ -14,7 +14,7 @@ def get_data_string(steps,current_step,loss):
         string += '.'*(dots - 1)
 
    data_String = '{0}/{1} :'.format(current_step,steps) + string
-   data_String += ' Loss: ' + str(loss)
+   data_String += ' Loss: ' + str(loss.numpy())
    return data_String
 
 @tf.function
@@ -24,14 +24,14 @@ def train_one_step(model,inp, y_true,loss_func,optimizer,apply_regularization = 
         y_pred = model(inp)
         loss   = loss_func(y_true, y_pred)
         if apply_regularization:
-            loss += tf.math.sum(model.losses)
+            loss += tf.reduce_sum(model.losses)
         grads  = tape.gradient(loss,model.trainable_variables)
         optimizer.apply_gradients(zip(grads,model.trainable_variables))
 
     return loss,model
 
 
-def train(train_dataset, val_dataset, epochs, steps_per_epoch, val_steps, checkpoint, checkpoint_prefix, model, loss_func, optimizer, save_after = None,apply_regularization = False):
+def train(train_dataset, val_dataset, epochs, steps_per_epoch, val_steps, checkpoint, checkpoint_prefix, model, loss_func, optimizer,train_writer,test_writer, save_after = None,apply_regularization = False):
     epoch = checkpoint.epoch.numpy()
 
     while epoch < epochs:
@@ -59,8 +59,11 @@ def train(train_dataset, val_dataset, epochs, steps_per_epoch, val_steps, checkp
         string += ' Val Loss: ' + str(val_avg_loss)
         sys.stdout.write('\r' + string)
         print()
-        tf.summary.scalar('Loss',avg_loss)
-        tf.summary.scalar('Val_Loss',val_avg_loss)
+        epoch += 1
+        with train_writer.as_default():
+          tf.summary.scalar('Loss',avg_loss,epoch)
+        with test_writer.as_default():
+          tf.summary.scalar('Val_Loss',val_avg_loss,epoch)
         if save_after is not None:
             if epoch%save_after == 0:
                 checkpoint.save(checkpoint_prefix)

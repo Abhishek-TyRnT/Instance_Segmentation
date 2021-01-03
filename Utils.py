@@ -29,7 +29,6 @@ def get_mask(info, coco):
 
 
 def transform(boxes):
-
     xmin, ymin, w, h = [boxes[:, i] for i in range(4)]
 
     xmax = xmin + w
@@ -38,6 +37,8 @@ def transform(boxes):
     return boxes
 def get_bb_box(info,coco):
     annIds = coco.getAnnIds(imgIds=info['id'])
+    if len(annIds) == 0:
+        return None
     anns = coco.loadAnns(annIds)
     boxes = []
     for ann in anns:
@@ -104,7 +105,7 @@ def get_iou(box1,box2):
 
 
 def filter(boxes, img_size):
-    iou, area1, area2 = get_iou(np.array((0, 0, img_size[0], img_size[1])), boxes)
+    iou, area1, area2 = get_iou(np.array((0, 0, img_size[1], img_size[0])), boxes)
     index             = np.logical_and(iou > 0.3*(area2/area1),iou <= area2/area1)
     boxes             = boxes[index]
     x_boxes           = np.stack([boxes[:, 0],boxes[:, 2]], axis = -1)
@@ -154,6 +155,7 @@ def get_ground_truth_mask(img,truth_index,proposals,mask,instance_nos,output_siz
     boxes = proposals[truth_index]
     instance_nos = instance_nos[truth_index]
     patches,masked_patches = [],[]
+    y = []
     for i,box in zip(instance_nos,boxes):
         box   = np.int32(box)
         image = img[box[1]:box[3], box[0]:box[2]]
@@ -162,9 +164,11 @@ def get_ground_truth_mask(img,truth_index,proposals,mask,instance_nos,output_siz
 
         instance     = np.where(mask == i,1,-1)
         masked_patch = instance[box[1]:box[3], box[0]:box[2]]
-        masked_patch = tf.image.resize(masked_patch,size=output_size)
+        masked_patch = tf.image.resize(tf.expand_dims(masked_patch,-1),size=output_size)
+        masked_patch = masked_patch[:,:,0]
         masked_patches.append(masked_patch)
-    remaining_boxes = len(masked_patches)
+        y.append(1.0)
+    remaining_boxes = max(len(masked_patches),2)
     negative_boxes  = proposals[np.logical_not(truth_index)]
     for i in range(remaining_boxes):
         box = np.int32(negative_boxes[i])
@@ -174,6 +178,53 @@ def get_ground_truth_mask(img,truth_index,proposals,mask,instance_nos,output_siz
         patches.append(image)
 
         masked_patches.append(-np.ones(shape = output_size,dtype = np.int32))
-    y  = np.concatenate([np.ones(shape = (remaining_boxes,)),np.zeros(shape = (remaining_boxes,))], axis = 0)
-    return np.array(patches),np.array(masked_patches),y
+        y.append(-1.)
+    return np.array(patches),np.array(masked_patches),np.array(y)
 
+
+"""Datadir = bytes('F:/datasets/COCO 2017','UTF-8')
+datatype = bytes('train','UTF-8')
+coco = get_coco(Datadir,datatype)
+imgdir = os.path.join(Datadir.decode('UTF-8'),datatype.decode('UTF-8') + '2017')
+
+
+infos = coco.dataset['images']
+i = 0
+for info in infos[:50]:
+
+  i+=1
+  boxes    = get_bb_box(info, coco)
+  if boxes is None:
+      continue
+  img      = plt.imread(os.path.join(imgdir,info['file_name']))
+  img_size = img.shape[:-1]
+  xmin, ymin, xmax, ymax = [boxes[:, i] for i in range(4)]
+  xmin, xmax = (xmin / img_size[1])*600, (xmax / img_size[1])*600
+  ymin, ymax = (ymin / img_size[0])*600, (ymax / img_size[0])*600
+  boxes = tf.stack([xmin,ymin,xmax,ymax], axis = -1)
+  img      = tf.image.resize(img,(600,600))
+  mask     = get_mask(info, coco)
+  mask = tf.image.resize(tf.expand_dims(mask,-1), (600, 600))
+  mask = mask[:,:,0]
+  img_size = mask.shape
+
+  proposals = get_proposals(img_size)
+  proposals = rearrange(proposals)
+  proposals = transform(proposals)
+  proposals = filter(proposals, img_size)
+  truth_index,instance_nos = get_truth_index(boxes, proposals)
+  patches, masked_patches, y = get_ground_truth_mask(img, truth_index, proposals, mask, instance_nos, (224,224))
+  #print(masked_patches.shape)
+  if truth_index[truth_index].shape[0] == 0:
+    xmin,ymin,xmax,ymax = [proposals[:,i] for i in range(4)]
+    xmin,xmax = xmin/img_size[1],xmax/img_size[1]
+    ymin,ymax = ymin/img_size[0],ymax/img_size[0]
+    boxes = tf.stack([ymin,xmin,ymax,xmax], axis = -1)
+
+    img = tf.image.draw_bounding_boxes([img/255],[boxes],[[0.,0.,1.0]])
+
+    plt.subplot(1,2,1)
+    plt.imshow(img[0])
+    plt.subplot(1,2,2)
+    plt.imshow(mask)
+    plt.show()"""
