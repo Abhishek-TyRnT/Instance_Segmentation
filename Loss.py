@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.losses import Loss
 import tensorflow.keras.backend as K
+import numpy as np
 class Joint_loss(Loss):
 
     def __init__(self, lambda_ = 1/32., h = 56., w = 56., names = 'Joint_Loss'):
@@ -14,6 +15,7 @@ class Joint_loss(Loss):
         loss = -1*y_true*y_pred
         loss = K.sigmoid(loss)
         loss = -K.log(loss)
+        loss = K.sum(loss)
         return tf.cast(loss, tf.float32)
 
 
@@ -37,5 +39,6 @@ class Joint_loss(Loss):
 
         mask_loss             = mask_loss/(self.h*self.w)
 
-        total_loss            = K.sum(mask_loss) + self.lambda_*score_loss
+        total_loss            = K.sum(mask_loss) + self.lambda_*(score_loss)
         return total_loss
+
